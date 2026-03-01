@@ -64,7 +64,7 @@ def get_tw_official_industries():
         for item in requests.get(url_tpex, verify=False, timeout=10).json():
             ind_dict[str(item.get('公司代號', ''))] = item.get('產業類別', '未分類')
     except Exception as e:
-        print("TWSE Industry fetch failed:", e)
+        pass
     return ind_dict
 
 @st.cache_data(ttl=43200, show_spinner=False)
@@ -79,14 +79,48 @@ def fetch_yf_info(ticker):
         return {}
 
 # ==========================================
-# 🌐 產業翻譯字典 (美股與備用)
+# 🤖 微型 AI 題材雷達 (NLP 關鍵字萃取)
+# ==========================================
+def get_ai_theme(summary):
+    if not isinstance(summary, str) or not summary:
+        return "一般題材"
+    
+    text = summary.lower()
+    themes = []
+    
+    if any(k in text for k in ['artificial intelligence', ' ai ', 'machine learning', 'deep learning', 'generative']):
+        themes.append("🤖 AI/機器學習")
+    if any(k in text for k in ['cloud computing', 'data center', 'saas', 'iaas', 'paas', 'server']):
+        themes.append("☁️ 雲端/伺服器")
+    if any(k in text for k in ['electric vehicle', ' ev ', 'autonomous', 'self-driving', 'battery', 'energy storage']):
+        themes.append("🚗 電動車/儲能")
+    if any(k in text for k in ['cybersecurity', 'network security', 'hacker', 'firewall']):
+        themes.append("🛡️ 網路資安")
+    if any(k in text for k in ['semiconductor', 'foundry', 'wafer', 'chip', 'ic design', 'packaging']):
+        themes.append("💽 半導體鏈")
+    if any(k in text for k in ['biotech', 'clinical', 'pharma', 'oncology', 'therapy', 'medical device']):
+        themes.append("🧬 生技醫療")
+    if any(k in text for k in ['blockchain', 'crypto', 'fintech', 'payment', 'digital banking']):
+        themes.append("💸 金融科技")
+    if any(k in text for k in ['renewable', 'solar', 'wind energy', 'green energy']):
+        themes.append("🌱 綠能環保")
+    if any(k in text for k in ['aerospace', 'defense', 'military', 'satellite']):
+        themes.append("🚀 航太國防")
+    if any(k in text for k in ['robotics', 'automation']):
+        themes.append("🦾 機器人/自動化")
+
+    if themes:
+        return " + ".join(themes)
+    return "一般題材"
+
+# ==========================================
+# 🌐 官方產業翻譯字典
 # ==========================================
 def get_chinese_industry(eng_str):
     if not isinstance(eng_str, str) or eng_str == 'Unknown' or eng_str == '':
         return '未分類'
     
     clean_str = eng_str.lower().replace('-', '').replace('—', '').replace(' ', '').replace('&', '').replace(',', '')
-    
     smart_dict = {
         'semiconductors': '半導體', 'semiconductorequipmentmaterials': '半導體設備與材料',
         'softwareinfrastructure': '基礎軟體', 'softwareapplication': '應用軟體',
@@ -120,78 +154,70 @@ def get_chinese_industry(eng_str):
         'realestateservices': '房地產服務', 'solar': '太陽能',
         'solarequipmentmaterials': '太陽能設備與材料'
     }
-    
     if clean_str in smart_dict: 
         return smart_dict[clean_str]
     return eng_str
 
-def get_finviz_tier(val, is_roe=False):
-    if val >= 30: tier = 30
-    elif val >= 25: tier = 25
-    elif val >= 20: tier = 20
-    elif val >= 15: tier = 15
-    elif val >= 10: tier = 10
-    elif val >= 5: tier = 5
-    else: return 'Positive (>0%)'
+# ==========================================
+# 🎛️ 頂部控制面板 (TradingView 風格)
+# ==========================================
+st.title("🌍 全球 SEPA 終極掃描器：AI 題材版")
 
-    if is_roe:
-        return f'Over +{tier}%'
-    else:
-        return f'Over {tier}%'
+fund_map = {"停用": None, "大於 10%": 10, "大於 15%": 15, "大於 20%": 20, "大於 25%": 25, "大於 30%": 30}
+vcp_map = {"停用": None, "0 ~ 15%": 15, "0 ~ 20%": 20, "0 ~ 25%": 25, "0 ~ 30%": 30, "0 ~ 50%": 50}
+kd_map = {"停用": None, "近 3 日": 3, "近 4 日": 4, "近 5 日": 5}
+
+with st.expander("⚙️ 展開/收起 篩選條件設定", expanded=True):
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("##### 📈 1. 趨勢模板")
+        use_price = st.checkbox("價格 > $10 (台股15元)", value=True)
+        use_sma_trend = st.checkbox("長線多頭 (150MA > 200MA)", value=True)
+        use_sma50 = st.checkbox("中短線爆發 (收盤價 > 50MA > 150MA)", value=True)
+        use_off_low = st.checkbox("脫離底部 (高於52W低點 30%以上)", value=True)
+
+    with col2:
+        st.markdown("##### 💰 2. 基本面催化劑")
+        roe_opt = st.selectbox("ROE 下限", list(fund_map.keys()), index=2)
+        eps_opt = st.selectbox("EPS 單季年增 YoY", list(fund_map.keys()), index=4)
+        rev_opt = st.selectbox("營收 單季年增 YoY", list(fund_map.keys()), index=4)
+
+    with col3:
+        st.markdown("##### 🎯 3. 籌碼與技術轉折")
+        vcp_opt = st.selectbox("VCP 距高點跌幅區間", list(vcp_map.keys()), index=3)
+        use_vol_dry = st.checkbox("底部量縮 (近期量 < 月均量75%)", value=True)
+        kd_opt = st.selectbox("KD<20 低檔黃金交叉", list(kd_map.keys()), index=3)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🗑️ 清空歷史快取 (重新下載)", use_container_width=True):
+            st.session_state['us_data'] = pd.DataFrame()
+            st.session_state['tw_data'] = pd.DataFrame()
+            st.cache_data.clear() 
+            st.rerun()
+
+roe_val = fund_map[roe_opt]
+eps_val = fund_map[eps_opt]
+rev_val = fund_map[rev_opt]
+use_roe = roe_val is not None
+use_eps = eps_val is not None
+use_rev = rev_val is not None
+
+max_drop = vcp_map[vcp_opt]
+use_vcp = max_drop is not None
+min_drop = 0
+
+kd_days = kd_map[kd_opt]
+use_kd = kd_days is not None
 
 # ==========================================
-# 🎛️ 左側控制中心 (Sidebar)
+# 🚀 啟動按鈕區塊
 # ==========================================
-st.sidebar.title("🎯 SEPA 策略控制台")
-
-st.sidebar.subheader("1. 趨勢模板 (Trend Template)")
-use_price = st.sidebar.toggle("價格 > $10 (台股15元)", value=True)
-use_sma_trend = st.sidebar.toggle("長線多頭 (150MA > 200MA)", value=True)
-use_sma50 = st.sidebar.toggle("中短線爆發 (收盤價 > 50MA > 150MA)", value=True)
-use_off_low = st.sidebar.toggle("脫離底部 (高於52週低點 30% 以上)", value=True)
-
-st.sidebar.subheader("2. 超級績效催化劑")
-use_roe = st.sidebar.toggle("啟用 ROE 過濾", value=True)
-if use_roe:
-    roe_val = st.sidebar.slider("🌍 全球 ROE 下限 (%)", min_value=0, max_value=50, value=15, step=1)
-
-use_eps = st.sidebar.toggle("啟用 EPS 季增率過濾", value=True)
-if use_eps:
-    eps_val = st.sidebar.slider("🌍 全球 EPS 單季年增率 YoY (%)", min_value=0, max_value=100, value=25, step=1)
-
-use_rev = st.sidebar.toggle("啟用 營收季增率過濾", value=True)
-if use_rev:
-    rev_val = st.sidebar.slider("🌍 全球 營收單季年增率 YoY (%)", min_value=0, max_value=100, value=25, step=1)
-
-st.sidebar.subheader("3. VCP 壓縮與量縮")
-use_vcp = st.sidebar.toggle("啟用 VCP 距高點跌幅區間", value=True)
-if use_vcp:
-    vcp_drop_range = st.sidebar.slider("距離最高點跌幅區間 (%)", min_value=0, max_value=50, value=(0, 25), step=1)
-    min_drop, max_drop = vcp_drop_range
-
-use_vol_dry = st.sidebar.toggle("底部量縮 (近期成交量 < 月均量 75%)", value=True)
-
-# 🌟 更新：擴大偵測到「近5日內」的超賣轉折點
-st.sidebar.subheader("4. 短線起漲時機 (Timing)")
-use_kd = st.sidebar.toggle("啟用「近5日內」KD < 20 黃金交叉", value=True)
-st.sidebar.caption("💡 開啟後，只挑選近 5 個交易日內，在 K 值小於 20 的極度超賣區剛發生黃金交叉的股票。")
-
-if st.sidebar.button("🗑️ 清空所有歷史快取 (重新下載資料)", type="secondary"):
-    st.session_state['us_data'] = pd.DataFrame()
-    st.session_state['tw_data'] = pd.DataFrame()
-    st.cache_data.clear() 
-    st.rerun()
-
-# ==========================================
-# 主畫面
-# ==========================================
-st.title("🌍 全球 SEPA 終極掃描器：低檔超賣轉折版")
-st.markdown("💡 **操作秘訣**：透過精準捕捉近 5 日內的 KD < 20 黃金交叉，我們專挑大趨勢向上、但短線被超賣錯殺的絕佳買點！")
-
-col1, col2 = st.columns(2)
-with col1:
+st.markdown("<br>", unsafe_allow_html=True)
+btn_col1, btn_col2 = st.columns(2)
+with btn_col1:
     btn_us = st.button("🇺🇸 啟動【美股】SEPA 極速狙擊", use_container_width=True, type="primary")
-with col2:
+with btn_col2:
     btn_tw = st.button("🇹🇼 啟動【台股】SEPA 穩健狙擊", use_container_width=True, type="primary")
 
 # ==========================================
@@ -206,9 +232,9 @@ if btn_us:
             if use_sma50: filters_dict['50-Day Simple Moving Average'] = 'Price above SMA50'
             if use_off_low: filters_dict['52-Week High/Low'] = '30% or more above Low'
             
-            if use_roe: filters_dict['Return on Equity'] = get_finviz_tier(roe_val, is_roe=True)
-            if use_eps: filters_dict['EPS growthqtr over qtr'] = get_finviz_tier(eps_val, is_roe=False)
-            if use_rev: filters_dict['Sales growthqtr over qtr'] = get_finviz_tier(rev_val, is_roe=False)
+            if use_roe: filters_dict['Return on Equity'] = f"Over +{roe_val}%"
+            if use_eps: filters_dict['EPS growthqtr over qtr'] = f"Over {eps_val}%"
+            if use_rev: filters_dict['Sales growthqtr over qtr'] = f"Over {rev_val}%"
             
             finviz_filters_tuple = tuple(filters_dict.items())
             df_finviz = fetch_finviz_data(finviz_filters_tuple)
@@ -226,7 +252,6 @@ if btn_us:
                     status_msg.text("📦 美股精算批次: " + str(i//chunk_size + 1) + "/" + str((len(us_tickers)//chunk_size)+1))
                     
                     data = fetch_yf_history(tuple(chunk_tickers))
-                    
                     if data.empty: continue
                     
                     for ticker in chunk_tickers:
@@ -263,16 +288,18 @@ if btn_us:
                             k_series = rsv.ewm(com=2, adjust=False).mean()
                             d_series = k_series.ewm(com=2, adjust=False).mean()
                             
-                            # 🌟 嚴格判定：K>D 且 昨天K<=D 且 昨天K<20
                             kd_cross_series = (k_series > d_series) & (k_series.shift(1) <= d_series.shift(1)) & (k_series.shift(1) < 20)
-                            
-                            # 🌟 改為檢查最近 5 天內是否發生過黃金交叉
-                            recent_cross = kd_cross_series.iloc[-5:].any()
+                            recent_cross = kd_cross_series.iloc[-kd_days:].any() if use_kd else False
 
                             k_val = float(k_series.iloc[-1])
                             d_val = float(d_series.iloc[-1])
 
                             if use_kd and not recent_cross: continue
+
+                            # 🌟 獲取公司業務敘述，交給 AI 雷達抓題材
+                            info = fetch_yf_info(ticker)
+                            summary = info.get('longBusinessSummary', '')
+                            ai_theme = get_ai_theme(summary)
 
                             price_1y_ago = float(df['Close'].iloc[0])
                             rs_1y = ((close_price - price_1y_ago) / price_1y_ago) * 100
@@ -296,6 +323,7 @@ if btn_us:
                                 '股票代號': ticker,
                                 '公司名稱': company,
                                 '分類產業': industry_tw,
+                                '🔥 AI 雷達題材': ai_theme,  # 🌟 新增的題材欄位
                                 '最新收盤價': round(close_price, 2),
                                 'KD狀態': kd_display,
                                 '距高點跌幅': f"-{drop_pct:.1f}%",
@@ -315,7 +343,7 @@ if btn_us:
 
                 if len(sepa_results) > 0:
                     df_result = pd.DataFrame(sepa_results)
-                    df_result = df_result.sort_values(by=['分類產業', '排序列'], ascending=[True, False])
+                    df_result = df_result.sort_values(by=['🔥 AI 雷達題材', '排序列'], ascending=[False, False])
                     st.session_state['us_data'] = df_result.drop(columns=['排序列'])
                     st.success("🎉 美股極速掃描完成！")
                 else:
@@ -333,13 +361,11 @@ if btn_tw:
         try:
             all_tickers_tuple, tw_names_dict = get_tw_stock_list()
             all_tickers = list(all_tickers_tuple)
-            
             tw_official_industry_dict = get_tw_official_industries()
             
             passed_technical_tickers = []
             chunk_size = 80 
             sepa_tech_data = {}
-            
             tech_progress = st.progress(0)
 
             for i in range(0, len(all_tickers), chunk_size):
@@ -385,9 +411,7 @@ if btn_tw:
                         d_series = k_series.ewm(com=2, adjust=False).mean()
                         
                         kd_cross_series = (k_series > d_series) & (k_series.shift(1) <= d_series.shift(1)) & (k_series.shift(1) < 20)
-                        
-                        # 🌟 改為檢查最近 5 天內是否發生過黃金交叉
-                        recent_cross = kd_cross_series.iloc[-5:].any()
+                        recent_cross = kd_cross_series.iloc[-kd_days:].any() if use_kd else False
 
                         k_val = float(k_series.iloc[-1])
                         d_val = float(d_series.iloc[-1])
@@ -429,6 +453,10 @@ if btn_tw:
                         eps_growth = info.get('earningsQuarterlyGrowth', 0)
                         rev_growth = info.get('revenueGrowth', 0)
                         
+                        # 🌟 獲取公司業務敘述，交給 AI 雷達抓題材
+                        summary = info.get('longBusinessSummary', '')
+                        ai_theme = get_ai_theme(summary)
+
                         official_industry = tw_official_industry_dict.get(clean_ticker)
                         if official_industry and official_industry != '未分類':
                             industry_tw = official_industry
@@ -450,6 +478,7 @@ if btn_tw:
                             '股票代號': clean_ticker,
                             '公司名稱': company_name,
                             '分類產業': industry_tw,
+                            '🔥 AI 雷達題材': ai_theme,  # 🌟 新增的題材欄位
                             '最新收盤價': round(tech_stats['close_price'], 2),
                             'KD狀態': kd_display,
                             '距高點跌幅': f"-{tech_stats['drop_pct']:.1f}%",
@@ -463,7 +492,7 @@ if btn_tw:
 
             if len(final_superstars) > 0:
                 df_result = pd.DataFrame(final_superstars)
-                df_result = df_result.sort_values(by=['分類產業', '排序列'], ascending=[True, False])
+                df_result = df_result.sort_values(by=['🔥 AI 雷達題材', '排序列'], ascending=[False, False])
                 st.session_state['tw_data'] = df_result.drop(columns=['排序列'])
                 st.success("🎉 台股極速掃描完成！")
             else:
@@ -474,47 +503,54 @@ if btn_tw:
             st.error("❌ 抓取失敗：" + str(e))
 
 # ==========================================
-# 🌍 報表顯示區塊 (包含檔數統計)
+# 🌍 報表顯示區塊 (包含左右並排比對)
 # ==========================================
 df_us = st.session_state.get('us_data', pd.DataFrame())
 df_tw = st.session_state.get('tw_data', pd.DataFrame())
 
 if not df_us.empty or not df_tw.empty:
     st.markdown("---")
-    st.header("🌍 全球 SEPA 決策面板")
     
-    frames = []
-    if not df_us.empty: frames.append(df_us[['分類產業']])
-    if not df_tw.empty: frames.append(df_tw[['分類產業']])
-    df_combined_ind = pd.concat(frames, ignore_index=True)
-    
-    total_count = len(df_us) + len(df_tw)
+    # 🌟 左右並排的資金板塊對照表
+    st.subheader(f"🔥 全球資金板塊比對 (美股 {len(df_us)} 檔 vs 台股 {len(df_tw)} 檔)")
+    col_heat_us, col_heat_tw = st.columns(2)
 
-    st.subheader(f"🔥 全球資金細分產業熱力榜 (共入選 {total_count} 檔)")
-    industry_counts = df_combined_ind['分類產業'].value_counts().reset_index()
-    industry_counts.columns = ['分類產業', '入選飆股數量']
-    st.dataframe(industry_counts, use_container_width=True)
+    with col_heat_us:
+        st.markdown("##### 🇺🇸 美股熱門板塊")
+        if not df_us.empty:
+            # 統計 產業+題材 數量
+            us_counts = df_us.groupby(['分類產業', '🔥 AI 雷達題材']).size().reset_index(name='入選數量')
+            us_counts = us_counts.sort_values('入選數量', ascending=False)
+            st.dataframe(us_counts, use_container_width=True, hide_index=True)
+        else:
+            st.info("尚無美股入選資料")
+
+    with col_heat_tw:
+        st.markdown("##### 🇹🇼 台股熱門板塊")
+        if not df_tw.empty:
+            # 統計 產業+題材 數量
+            tw_counts = df_tw.groupby(['分類產業', '🔥 AI 雷達題材']).size().reset_index(name='入選數量')
+            tw_counts = tw_counts.sort_values('入選數量', ascending=False)
+            st.dataframe(tw_counts, use_container_width=True, hide_index=True)
+        else:
+            st.info("尚無台股入選資料")
 
     st.markdown("---")
     
+    kd_hint = f"帶有 🔥 符號代表該股於近 **{kd_days}** 日內發生「KD < 20 超賣區黃金交叉」！" if use_kd else ""
+    
     if not df_us.empty:
-        st.subheader(f"🇺🇸 美股精選名單：共 {len(df_us)} 檔")
-        st.caption("💡 已依官方分類產業排序，方便同儕比較。帶有 🔥 符號代表該股於近 5 日內發生「KD < 20 超賣區黃金交叉」！")
+        st.subheader(f"🇺🇸 美股精選名單")
+        st.caption(f"💡 已優先依「熱門題材」排序，方便同儕比較。{kd_hint}")
         st.dataframe(df_us, use_container_width=True)
         csv_us = df_us.to_csv(index=False).encode('utf-8-sig')
         st.download_button(label="📥 下載美股名單", data=csv_us, file_name='US_SEPA_Grouped.csv', mime='text/csv')
-    else:
-        st.subheader("🇺🇸 美股精選名單：共 0 檔")
-        st.info("尚無美股資料，或條件過於嚴苛，請點擊上方按鈕重新掃描。")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     if not df_tw.empty:
-        st.subheader(f"🇹🇼 台股精選名單：共 {len(df_tw)} 檔")
-        st.caption("💡 已依官方分類產業排序，方便同儕比較。帶有 🔥 符號代表該股於近 5 日內發生「KD < 20 超賣區黃金交叉」！")
+        st.subheader(f"🇹🇼 台股精選名單")
+        st.caption(f"💡 已優先依「熱門題材」排序，方便同儕比較。{kd_hint}")
         st.dataframe(df_tw, use_container_width=True)
         csv_tw = df_tw.to_csv(index=False).encode('utf-8-sig')
         st.download_button(label="📥 下載台股名單", data=csv_tw, file_name='TW_SEPA_Grouped.csv', mime='text/csv')
-    else:
-        st.subheader("🇹🇼 台股精選名單：共 0 檔")
-        st.info("尚無台股資料，或條件過於嚴苛，請點擊上方按鈕重新掃描。")
